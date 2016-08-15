@@ -1,0 +1,29 @@
+{
+  "name": "easy-office-converter",
+  "version": "1.0.0",
+  "description": "An easy way to convert any office or libreoffice format. Also allow convert to pdf and html formats.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "office",
+    "libreoffice",
+    "converter",
+    "html",
+    "pdf",
+    "xlsx",
+    "xls",
+    "odt",
+    "doc",
+    "ppt",
+    "pptx"
+  ],
+  "author": "charliejuc <charlieinsous@gmail.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "istanbul": "^0.4.4",
+    "tap-spec": "^4.1.1",
+    "tape": "^4.6.0"
+  }
+}
