@@ -1,3 +1,4 @@
+var uniqid = require('uniqid')
 var async = require('async')
 var exec = require('child_process').exec
 var path = require('path')
@@ -12,14 +13,48 @@ function officeConverter (filePath, options) {
 	if ( ! self.filePath ) throw new Error('filePath is required')
 	if ( ! self.options.outputFormat ) throw new Error('outputFormat option is required')
 	
-	var inputExt = path.extname(self.filePath)
-	var filename = path.basename(self.filePath, inputExt)
-	var dirname = path.dirname(self.filePath)
-	var ext = '.' + self.options.outputFormat 
+	self.inputExt = path.extname(self.filePath)
+	self.inputFilename = path.basename(self.filePath, self.inputExt)
+	self.inputDirname = path.dirname(self.filePath)
+	self.outputExt = self.options.outputFormat 
 
-	self.outputFilePath = path.join(dirname, filename + ext)
+	self.outputFilename = self.inputFilename
+
+	self.outputFilePath = path.join(self.inputDirname, self.outputFilename + '.' + self.outputExt)
+
+	self.inputFileExists = function (callback) {
+		self.fileExists(self.filePath, callback)
+	}
+
+	self.outputFileExists = function (callback) {
+		self.fileExists(self.getOutputFilePath(), callback)
+	}
+
+	
+	self.finalOutputFileExists = function (callback) {
+		self.fileExists(self.getFinalOutputFilePath(), callback)
+	}
+
+
+	self.fileExists = function (filePath, callback) {
+		fs.access(filePath, fs.F_OK, callback)
+	}
+
+	self.addUniqueidToOutputFilename = function () {
+		self.outputFilename += util.format('_%s', uniqid())
+	}
 
 	self.convert = function (callback) {
+		function finalOutputFileExists (cb) {
+			var callback = function (err) {
+				if ( ! err) self.addUniqueidToOutputFilename()
+				
+				cb()
+			}
+
+			self.finalOutputFileExists(callback)
+		}
+
 		function convertProcess (cb) {
 			var convertCommand = self.getConvertCommand()
 
@@ -30,8 +65,8 @@ function officeConverter (filePath, options) {
 			})
 		} 
 
-		function fileExists (cb) {
-			fs.access(self.getOutputFilePath(), fs.F_OK, (err) => {
+		function outputFileExists (cb) {
+			self.outputFileExists(err => {
 				if (err) return cb(err)
 
 				cb()
@@ -47,15 +82,23 @@ function officeConverter (filePath, options) {
 		}
 
 		async.series([
+			finalOutputFileExists,
 			convertProcess,
-			fileExists,
+			outputFileExists,
 			moveFile
 		], err => {
 			if (err) return callback(err)
-
+			
 			callback(null, self.getOutputFilePath())
 		})
 	}
+	
+	self.getFinalOutputFilePath = function () {
+		var oldPath = self.getOutputFilePath()
+		if ( ! self.options.outputDir ) return oldPath
+		
+		return path.join(self.options.outputDir, self.outputFilename + '.' + self.outputExt)	
+	} 
 
 	self.getOutputFilePath = function () {
 		return self.outputFilePath
@@ -65,7 +108,7 @@ function officeConverter (filePath, options) {
 		if ( ! self.options.outputDir ) return callback()
 
 		var oldPath = self.getOutputFilePath()
-		var newPath = path.join(self.options.outputDir, path.basename(oldPath))
+		var newPath = self.getFinalOutputFilePath()
 
 		self.outputFilePath = newPath
 	

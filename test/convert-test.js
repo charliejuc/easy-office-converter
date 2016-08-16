@@ -1,10 +1,12 @@
 'use strict'
+var async = require('async')
 var test = require('tape')
 var officeConverter = require('../')
 var path = require('path')
 var util = require('util')
-var inputFormats = ['ppt']
-var outputFormats = ['pdf']
+var inputFormats =  ['ppt', 'pptx', 'doc', 'docx']
+var outputFormats = ['pdf', 'pdf', 'html']
+var fakeOutputFormats = ['dafsd', '23saf']
 var fs = require('fs')
 
 test('Should be create officeConverter properly', function (t) {
@@ -43,16 +45,57 @@ test('Should be create officeConverter properly', function (t) {
 	t.ok(converter.moveFileToOutput, 'converter.moveFileToOutput should be exist')
 	t.equals(typeof converter.moveFileToOutput, 'function', 'converter.moveFileToOutput should be a function')
 
-	t.ok(converter.getOutputFilePath, 'converter.moveFileToOutput should be exist')
-	t.equals(typeof converter.getOutputFilePath, 'function', 'converter.moveFileToOutput should be a function')
+	t.ok(converter.getOutputFilePath, 'converter.getOutputFilePath should be exist')
+	t.equals(typeof converter.getOutputFilePath, 'function', 'converter.getOutputFilePath should be a function')
+
+	t.ok(converter.getFinalOutputFilePath, 'converter.getFinalOutputFilePath should be exist')
+	t.equals(typeof converter.getFinalOutputFilePath, 'function', 'converter.getFinalOutputFilePath should be a function')
+	
+	t.ok(converter.fileExists, 'converter.fileExists should be exist')
+	t.equals(typeof converter.fileExists, 'function', 'converter.fileExists should be a function')
+	
+	t.ok(converter.inputFileExists, 'converter.inputFileExists should be exist')
+	t.equals(typeof converter.inputFileExists, 'function', 'converter.inputFileExists should be a function')
+	
+	t.ok(converter.outputFileExists, 'converter.outputFileExists should be exist')
+	t.equals(typeof converter.outputFileExists, 'function', 'converter.outputFileExists should be a function')
+
+	t.ok(converter.finalOutputFileExists, 'converter.finalOutputFileExists should be exist')
+	t.equals(typeof converter.finalOutputFileExists, 'function', 'converter.finalOutputFileExists should be a function')
+
+	t.ok(converter.addUniqueidToOutputFilename, 'converter.addUniqueidToOutputFilename should be exist')
+	t.equals(typeof converter.addUniqueidToOutputFilename, 'function', 'converter.addUniqueidToOutputFilename should be a function')
 
 	t.ok(converter.filePath, 'converter.filePath should be exist')
 	t.equals(converter.filePath, filePath, 'converter.filePath should be a function')
 
 	t.ok(converter.outputFilePath, 'converter.outputFilePath should be exist')
 	t.equals(converter.outputFilePath, converter.getOutputFilePath(), 'converter.outputFilePath should be equal to converter.getOutputFilePath()')
+
+	function inputFileExists (cb) {
+		converter.inputFileExists(err => {
+			t.error(err, 'should not be an error in inputFileExists')
+			
+			if (err) cb(err)
+
+			cb()
+		})
+	}
 	
-	t.end()
+	function outputFileExists (cb) {
+		converter.outputFileExists(err => {
+			cb()
+		})
+	}
+	
+	async.series([
+		inputFileExists,
+		outputFileExists
+	], err => {
+		t.error(err, 'should not be an error in async.series final callback')
+
+		t.end()
+	})
 })
 
 test('should convert files', function (t) {		
@@ -67,6 +110,7 @@ test('should convert files', function (t) {
 
 		fs.access(filePath || '', fs.F_OK, err => {
 			t.error(err, 'should not be an error if file exists')	
+			if ( ! err ) fs.unlink(filePath)
 			if (cb) cb()
 		})
 	}
@@ -84,14 +128,16 @@ test('should convert files', function (t) {
 		var i_length = inputFormats.length
 		var o_length = outputFormats.length
 
-		while (i_length) {
+		function doConvert (i_length, o_length) {
+			if ( ! i_length ) return
 			--i_length
 
 			inputFormat = inputFormats[i_length]
 
 			filePath = filePath_no_ext + inputFormat
 			
-			while (o_length) {
+			function endConvert (o_length) {
+				if ( ! o_length ) return doConvert(i_length, outputFormats.length)
 				--o_length
 
 				outputFormat = outputFormats[o_length]
@@ -102,9 +148,17 @@ test('should convert files', function (t) {
 
 				converter = officeConverter(filePath, options)
 
-				converter.convert(callbacks[o_length > 0 ? 1 : 0])
+				converter.convert((err, filePath) => { 
+					callbacks[i_length > 0 || o_length > 0 ? 1 : 0](err, filePath)
+
+					endConvert(o_length)
+				})
 			}
+
+			endConvert(o_length)
 		}
+
+		doConvert(i_length, o_length)
 	}
 
 
@@ -142,17 +196,44 @@ test('should be fail converting files', function (t) {
 
 	var converter, filePath, options, outputFormat, inputFormat
 
-	inputFormat = path.extname(filePath)
-	outputFormat = 'pdf'
-	options = {
-		outputFormat: outputFormat,
-	}
+	function failByFilePath (cb) {
+		inputFormat = path.extname(filePath)
+		outputFormat = 'pdf'
+		options = {
+			outputFormat: outputFormat,
+		}
 
-	converter = officeConverter(filePath, options)
+		converter = officeConverter(filePath, options)
 
-	converter.convert((err, filePath) => {
-		t.ok(err, util.format('should be an error in convert %s to %s', inputFormat, outputFormat))
-		t.ok(! filePath, util.format('should not be exists filePath in convert %s to %s', inputFormat, outputFormat))
+		converter.convert((err, filePath) => {
+			t.ok(err, util.format('should be an error in convert %s to %s', inputFormat, outputFormat))
+			t.ok(! filePath, util.format('should not be exists filePath in convert %s to %s', inputFormat, outputFormat))
+			cb()
+		})
+	}	
+		
+	function failByOutputExt (cb) {
+		filePath = path.join(__dirname, 'test-files', 'test.doc')
+
+		inputFormat = path.extname(filePath)
+		outputFormat = fakeOutputFormats[0]
+		options = {
+			outputFormat: outputFormat,
+		}
+
+		converter = officeConverter(filePath, options)
+
+		converter.convert((err, filePath) => {
+			t.ok(err, util.format('should be an error in convert %s to %s', inputFormat, outputFormat))
+			t.ok(! filePath, util.format('should not be exists filePath in convert %s to %s', inputFormat, outputFormat))
+			cb()
+		})
+	}	
+
+	async.series([
+		failByFilePath,
+		failByOutputExt		
+	], err => {
 		t.end()
 	})
 })
