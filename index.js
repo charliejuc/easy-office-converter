@@ -10,17 +10,16 @@ function officeConverter (filePath, options) {
 	self.options = options || {}
 	self.filePath = filePath
 
-	if ( ! self.filePath ) throw new Error('filePath is required')
-	if ( ! self.options.outputFormat ) throw new Error('outputFormat option is required')
+	self.allowQueue = self.options.allowQueue || false
+	self.timeout = self.options.timeout || 500
+
+	if ( ! self.filePath ) throw new Error('filePath is required')	
 	
 	self.inputExt = path.extname(self.filePath)
 	self.inputFilename = path.basename(self.filePath, self.inputExt)
 	self.inputDirname = path.dirname(self.filePath)
-	self.outputExt = self.options.outputFormat 
-
+	
 	self.outputFilename = self.inputFilename
-
-	self.outputFilePath = path.join(self.inputDirname, self.outputFilename + '.' + self.outputExt)
 
 	self.inputFileExists = function (callback) {
 		self.fileExists(self.filePath, callback)
@@ -44,7 +43,28 @@ function officeConverter (filePath, options) {
 		self.outputFilename += util.format('_%s', uniqid())
 	}
 
-	self.convert = function (callback) {
+	self.setOutputOptions = function (outputOptions) {
+		if ( ! self.outputOptions || ( outputOptions && Object.keys(outputOptions).length )) {
+			self.outputOptions = outputOptions
+		}
+
+		return self.outputOptions
+	}
+
+	self.appendToQueue = function () {
+		throw new Error("Code not finished")
+	}
+
+	self.existsPreviousProcess = function () {
+		return undefined
+	}
+
+	self.convert = function (callback, outputOptions) {
+		self.setOutputOptions(outputOptions)
+
+		if ( ! self.outputOptions.outputFormat ) throw new Error('outputFormat option is required')
+		if ( self.existsPreviousProcess() ) return self.addToQueue(callback, outputOptions)
+
 		function finalOutputFileExists (cb) {
 			var callback = function (err) {
 				if ( ! err) self.addUniqueidToOutputFilename()
@@ -89,23 +109,25 @@ function officeConverter (filePath, options) {
 		], err => {
 			if (err) return callback(err)
 			
-			callback(null, self.getOutputFilePath())
+			callback(null, self.getFinalOutputFilePath())
 		})
 	}
 	
 	self.getFinalOutputFilePath = function () {
 		var oldPath = self.getOutputFilePath()
-		if ( ! self.options.outputDir ) return oldPath
+		if ( ! self.outputOptions.outputDir ) return oldPath
 		
-		return path.join(self.options.outputDir, self.outputFilename + '.' + self.outputExt)	
+		return path.join(self.outputOptions.outputDir, self.outputFilename + '.' + self.outputOptions.outputFormat)	
 	} 
 
 	self.getOutputFilePath = function () {
+		self.outputFilePath = path.join(self.inputDirname, self.inputFilename + '.' + self.outputOptions.outputFormat )
+		
 		return self.outputFilePath
 	}
 
 	self.moveFileToOutput = function (callback) {
-		if ( ! self.options.outputDir ) return callback()
+		if ( ! self.outputOptions.outputDir ) return callback()
 
 		var oldPath = self.getOutputFilePath()
 		var newPath = self.getFinalOutputFilePath()
@@ -117,7 +139,7 @@ function officeConverter (filePath, options) {
 
 	self.getConvertCommand = function () {
 		var command = 'unoconv -f %s %s' 
-		return util.format(command, self.options.outputFormat, self.filePath)
+		return util.format(command, self.outputOptions.outputFormat, self.filePath)
 	}
 	
 	return self
