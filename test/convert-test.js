@@ -185,8 +185,17 @@ test('Fail creating listener', function (t) {
 
 test('Prev convert kill listener', function (t) {
 	var listener = listenerFunc()
+	var cbCalled = false
 	
 	function existsListener (cb) {
+		var cbWrapper = err => {
+			if (cbCalled) return
+			cbCalled = true
+			if (err) return cb(err)
+
+			cb()
+		}
+
 		function createListener (callback) {
 			listener.create(callback)	
 		}
@@ -194,10 +203,9 @@ test('Prev convert kill listener', function (t) {
 		listener.exists((err, exists) => {
 			t.error(err, 'should not be an error in listener.exists')
 			t.ok(exists === false || exists === true, 'listener.exists should be equal to true or false')
+			if ( exists === false ) return createListener(cbWrapper)
 
-			if ( exists === false ) return createListener(cb)
-
-			cb()
+			cbWrapper()
 		})
 	}
 

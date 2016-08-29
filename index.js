@@ -72,6 +72,7 @@ function listener (options) {
 
 	listener.kill = function (callback) {	
 		var execSofficeKill = true
+		var execListenerKill = true
 
 		function sofficeExists (cb) {
 			listener.sofficeExists((err, exists) => {
@@ -82,26 +83,38 @@ function listener (options) {
 			})
 		}
 
-		function execKillListener (err, pid, cb) {
-			if (err) return cb(err)
-			if (isNaN(pid) || pid === 0) return cb(new Error('Process do not exist'))	
-			var cmd = 'kill %s'
-			cmd = util.format(cmd, pid)		
-	
-			exec(cmd, err => {
+		function listenerExists (cb) {
+			listener.exists((err, exists) => {
 				if (err) return cb(err)
-				execKillSoffice(cb)
+				if (! exists) execListenerKill = false
+	
+				cb()
 			})
-		}
-	
-		function execKillSoffice (cb) {
-			if ( ! execSofficeKill ) return cb()
-			var cmd = 'killall -I soffice.bin'
-	
-			exec(cmd, cb)
 		}
 		
 		function killProcesses(cb) {
+			if ( ! execSofficeKill && ! execListenerKill ) return cb()
+
+			function execKillListener (err, pid, cb) {
+				if ( ! execListenerKill ) return cb()
+				if (err) return cb(err)
+				if (isNaN(pid) || pid === 0) return cb(new Error('Process do not exist'))	
+				var cmd = 'kill %s'
+				cmd = util.format(cmd, pid)		
+		
+				exec(cmd, err => {
+					if (err) return cb(err)
+					execKillSoffice(cb)
+				})
+			}
+
+			function execKillSoffice (cb) {
+				if ( ! execSofficeKill ) return cb()
+				var cmd = 'killall -I soffice.bin'
+		
+				exec(cmd, cb)
+			}
+
 			listener.pid((err, pid) => { 
 				execKillListener(err, pid, cb)
 			})
@@ -118,47 +131,79 @@ function listener (options) {
 	}
 
 	listener.create = function (cb, createTries) {	
-		var cbWrapper = function (cb) {
-			return (err, stdout, stderr) => { 
-				if (listener.createCbCalled) return 
+		var alreadyExists = false
 
-				listener.createCbCalled = true
-				cb(err, stdout, stderr)
-			}
-		}(cb)
-		var cmd = listener.unoconvListenerProcessName
-		var endInit = setTimeout(cbWrapper, listener.options.createTimeout)
-		
-		createTries = createTries || 0
-		
-		function callbackCall (endInit, cbWrapper) {
-			var cbWrapperEnd = (err, stdout, stderr) => {
-				cbWrapper(err, stdout, stderr)
+		function checkPrevListenerExists (asCb) {
+			function prevListenerExists (err, exists, p_numb) {
+				if (err) return asCb(err)
 
-				listener.createCbCalled = false
+				alreadyExists = exists
+				asCb()
 			}
 
-			return (err, stdout, stderr) => {
-				clearTimeout(endInit)
-				if (err) return cbWrapperEnd(err, null, stderr)
-
-				function listenerExists (err, exists, p_numb) {
-					if (err) return cbWrapperEnd(err)
-					if (! exists && createTries < listener.options.maxCreateTries) { 
-						return setTimeout(() => listener.create(cb, ++createTries), listener.options.createTriesTimeout)
-					}
-					if (! exists) return cbWrapperEnd(new Error('Unoconv listener not running.'))
-
-					cbWrapper()
-				}
-
-				if (! listener.createCbCalled) return listener.exists(listenerExists)
-
-				cbWrapperEnd(err, stdout, stderr)
-			}
+			listener.exists(prevListenerExists)
 		}
 
-		exec(cmd, callbackCall(endInit, cbWrapper))
+		function createListener (asCb) {
+			if (alreadyExists) return asCb(new Error('Listener already exists'))
+
+			var cbWrapper = function (cb, asCb) {
+				return (err, stdout, stderr) => { 
+					if (listener.createCbCalled) return 
+
+					listener.createCbCalled = true
+					cb(err, stdout, stderr)
+					asCb()
+				}
+			}(cb, asCb)
+			var cmd = listener.unoconvListenerProcessName
+			var endInit = setTimeout(cbWrapper, listener.options.createTimeout)
+			var initTime = new Date()
+			
+			createTries = createTries || 0
+			
+			function callbackCall (endInit, initTime, cbWrapper) {
+				var cbWrapperEnd = (err, stdout, stderr) => {
+					cbWrapper(err, stdout, stderr)
+
+					listener.createCbCalled = false
+				}
+
+				return (err, stdout, stderr) => {
+					clearTimeout(endInit)
+					
+					//Check whether callback was called comparing time lapse with timeout to create listener				
+					var endTime = new Date()	
+					var totalTime = endTime - initTime
+					var cbCalled = totalTime >= listener.options.createTimeout
+
+					if (cbCalled || listener.createCbCalled) {
+						listener.createCbCalled = false
+						return
+					}
+					if (err) return cbWrapperEnd(err, null, stderr)
+
+					function listenerExists (err, exists, p_numb) {
+						if (err) return cbWrapperEnd(err)
+						if (! exists && createTries < listener.options.maxCreateTries) { 
+							return setTimeout(() => listener.create(cb, ++createTries), listener.options.createTriesTimeout)
+						}
+						if (! exists) return cbWrapperEnd(new Error('Unoconv listener not running.'))
+
+						cbWrapper()
+					}
+
+					listener.exists(listenerExists)
+				}
+			}
+
+			exec(cmd, callbackCall(endInit, initTime, cbWrapper))
+		}
+
+		async.series([
+			checkPrevListenerExists,
+			createListener
+		], cb)
 	}
 
 	return listener
