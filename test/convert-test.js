@@ -95,6 +95,14 @@ test('Should be create officeConverter properly', function (t) {
 	t.equals(typeof listener.pid, 'function', 'listener.pid should be a function')
 	
 	function existsListener (cb) {
+		var cbCalled = false
+		var cbWrapper = function (err) {
+			if (cbCalled) return	
+
+			cbCalled = true
+			cb(err)
+		}
+
 		function createListener (callback) {
 			listener.create(callback)	
 		}
@@ -103,12 +111,18 @@ test('Should be create officeConverter properly', function (t) {
 			t.error(err, 'should not be an error in listener.exists')
 			t.ok(exists === false || exists === true, 'listener.exists should be equal to true or false')
 
-			if ( exists === false ) createListener(cb)
+			if ( exists === false ) createListener(cbWrapper)
 
-			cb()
+			cbWrapper()
 		})
 	}
 
+	function killListener (cb) {
+		listener.kill(err => {
+			t.error(err, 'should not be an error in killListener')
+			cb(err)
+		})
+	}
 	
 	function inputFileExists (cb) {
 		converter.inputFileExists(err => {
@@ -130,6 +144,7 @@ test('Should be create officeConverter properly', function (t) {
 	
 	async.series([
 		existsListener,
+		killListener,
 		inputFileExists,
 		outputFileExists
 	], err => {
@@ -172,34 +187,41 @@ test('should be throw exception', function (t) {
 test('Fail creating listener', function (t) {
 	var listener = listenerFunc()
 	
-	listener.kill((err) => {
-		t.error(err, 'should not be an error killing listener')
-		listener.create((err) => {
-			t.ok(err, 'should be and error creating listener')
-			t.end()
-		})
+	listener.kill(err => {
+		function createProcess () {
+			listener.create((err) => {
+				t.ok(err, 'should be an error creating listener')	 
+				t.end()
+			})
 
-		setTimeout(() => listener.kill(function () {}), Math.round(listener.options.createTimeout/2))
+			function killListener () {
+				listener.kill(function () { })
+			}
+
+			setTimeout(killListener, 150)
+		}
+
+		createProcess()
 	})
 })
 
 test('Prev convert kill listener', function (t) {
 	var listener = listenerFunc()
-	var cbCalled = false
 	
 	function existsListener (cb) {
 		var cbWrapper = err => {
-			if (cbCalled) return
-			cbCalled = true
+			if (cbWrapper.called) return
+			cbWrapper.called = true
 			if (err) return cb(err)
 
 			cb()
 		}
+		cbWrapper.called = false
 
 		function createListener (callback) {
 			listener.create(callback)	
 		}
-
+		
 		listener.exists((err, exists) => {
 			t.error(err, 'should not be an error in listener.exists')
 			t.ok(exists === false || exists === true, 'listener.exists should be equal to true or false')
