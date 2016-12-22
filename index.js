@@ -158,6 +158,7 @@ function listener (options) {
 			}(initTime)
 			var cbWrapper = function (err) {
 				if ( isCbCalled()) return 
+				listener.cleanProcess()
 				asCb(err)
 			}
 
@@ -195,6 +196,21 @@ function listener (options) {
 			checkPrevListenerExists,
 			createListener
 		], cb)
+	}
+
+	listener.getCleanCommand = function () {
+		var command = 'rm -rf ./lu*.tmp'
+		return command
+	}
+
+	listener.cleanProcess = function (cb) {
+		var cleanCommand = listener.getCleanCommand()
+
+		exec(cleanCommand, (err, stdout, stderr) => {
+			if (err) return cb ? cb(err) : console.error(err)
+
+			if (cb) cb()
+		})
 	}
 
 	return listener
@@ -289,7 +305,7 @@ function converter (filePath, options) {
 			convertProcess,
 			outputFileExists,
 			moveFile
-		], err => {
+		], (err) => {
 			if (err) return callback(err)
 			
 			callback(null, converter.getFinalOutputFilePath())

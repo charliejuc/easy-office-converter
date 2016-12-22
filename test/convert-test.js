@@ -93,6 +93,12 @@ test('Should be create officeConverter properly', function (t) {
 	
 	t.ok(listener.pid, 'listener.pid should be exist')
 	t.equals(typeof listener.pid, 'function', 'listener.pid should be a function')
+
+	t.ok(listener.getCleanCommand, 'listener.getCleanCommand should be exist')
+	t.equals(typeof listener.getCleanCommand, 'function', 'listener.getCleanCommand should be a function')
+
+	t.ok(listener.cleanProcess, 'listener.cleanProcess should be exist')
+	t.equals(typeof listener.cleanProcess, 'function', 'listener.cleanProcess should be a function')
 	
 	function existsListener (cb) {
 		var cbCalled = false
@@ -269,7 +275,9 @@ test('should convert files', function (t) {
 
 		fs.access(filePath || '', fs.F_OK, err => {
 			t.error(err, 'should not be an error if file exists')	
-			if ( ! err ) fs.unlink(filePath)
+			if ( ! err ) fs.unlink(filePath, (err) => {
+				if (err) return console.error(err)
+			})
 			if (cb) cb()
 		})
 	}
@@ -341,7 +349,7 @@ test('should be fail converting files', function (t) {
 		inputFormat = path.extname(filePath)
 		outputFormat = 'pdf'
 		options = {
-			outputFormat: outputFormat,
+			outputFormat: outputFormat
 		}
 
 		converter = officeConverter(filePath)
@@ -359,7 +367,7 @@ test('should be fail converting files', function (t) {
 		inputFormat = path.extname(filePath)
 		outputFormat = fakeOutputFormats[0]
 		options = {
-			outputFormat: outputFormat,
+			outputFormat: outputFormat
 		}
 
 		converter = officeConverter(filePath)
